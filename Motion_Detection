@@ -1,0 +1,76 @@
+import cv2
+import numpy as np
+import pygame
+import time
+import matplotlib.pyplot as plt
+
+# Initialize pygame mixer for playing sound
+pygame.mixer.init()
+
+# Function to play sound instantly
+def play_sound():
+    pygame.mixer.music.load('alarm.mp3')  # Make sure the sound file is in the same directory
+    pygame.mixer.music.play()
+
+# Initialize the webcam
+cap = cv2.VideoCapture(0)
+
+# Read the first frame
+_, frame1 = cap.read()
+frame1 = cv2.cvtColor(frame1, cv2.COLOR_BGR2GRAY)
+frame1 = cv2.GaussianBlur(frame1, (21, 21), 0)
+
+plt.ion()  # Turn on interactive mode for continuous updates
+fig, ax = plt.subplots()
+
+motion_detected = False
+last_sound_time = 0  # To manage sound delay
+cooldown = 1  # Cooldown time in seconds before playing sound again
+
+while cap.isOpened():
+    # Read the next frame
+    _, frame2 = cap.read()
+    gray_frame = cv2.cvtColor(frame2, cv2.COLOR_BGR2GRAY)
+    gray_frame = cv2.GaussianBlur(gray_frame, (21, 21), 0)
+
+    # Find the difference between the first frame and the current frame
+    diff = cv2.absdiff(frame1, gray_frame)
+    threshold = cv2.threshold(diff, 25, 255, cv2.THRESH_BINARY)[1]
+    threshold = cv2.dilate(threshold, None, iterations=2)
+
+    # Find contours to detect the motion area
+    contours, _ = cv2.findContours(threshold.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    for contour in contours:
+        if cv2.contourArea(contour) < 500:
+            continue
+        # Draw bounding box around moving object
+        (x, y, w, h) = cv2.boundingRect(contour)
+        cv2.rectangle(frame2, (x, y), (x + w, y + h), (0, 255, 0), 2)
+
+        # Play sound immediately when motion is detected
+        current_time = time.time()
+        if not motion_detected or current_time - last_sound_time > cooldown:
+            play_sound()
+            motion_detected = True
+            last_sound_time = current_time
+
+    # Reset motion detection state when no movement is detected
+    if len(contours) == 0:
+        motion_detected = False
+
+    # Convert BGR to RGB for displaying in matplotlib
+    frame2_rgb = cv2.cvtColor(frame2, cv2.COLOR_BGR2RGB)
+
+    # Clear the plot and display the new frame
+    ax.clear()
+    ax.imshow(frame2_rgb)
+    plt.pause(0.01)
+
+    # Update the previous frame to the current frame
+    frame1 = gray_frame
+
+# Release the webcam and close all figures
+cap.release()
+plt.ioff()  # Turn off interactive mode
+plt.close()
